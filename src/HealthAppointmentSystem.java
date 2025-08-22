@@ -11,6 +11,7 @@
  *  - Add a cap when entering the patient's age in the registration (e.g. 0-100) & invalidate any negatives (Pending)
  *  - Invalidate book appointment when inputting a time that is out of the doctor's availability (Pending)
  *  - Invalidate reschedule appointment when changing the date from the past (Pending)
+ *  - Invalidate a booking if a patient tries to schedule an appointment at a time that has already been booked with the same doctor, even if it’s through a different account (Pending)
  */
 
 import java.util.Scanner;
@@ -394,3 +395,4 @@ public class HealthAppointmentSystem {
         }
     }
 }
+

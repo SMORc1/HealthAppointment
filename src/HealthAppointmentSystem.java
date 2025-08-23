@@ -5,21 +5,22 @@
  *  - Make it so that you can't book from the past (Done)
  *  - Make it so that you can't set an appointment on two or more doctors at the same time and date (Done)
  *  - Make it so that you can't set an appointment on the same doctor twice (Done)
- *  - Provide a cap when setting an appointment ahead of time (e.g. 6 Months or 1 Year Cap) (Pending)
- *  - Registration of the same account details would invalidate the account registration (Pending)
- *  - When registering make sure the patient enters his full name (Pending)
- *  - Add a cap when entering the patient's age in the registration (e.g. 0-100) & invalidate any negatives (Pending)
+ *  - Provide a cap when setting an appointment ahead of time (e.g. 3 Months to 6 Months) (Done)
+ *  - Registration of the same account details would invalidate the account registration (Done)
+ *  - Invalidate account registration when inputting a registered phone number to another account (Done)
+ *  - When registering make sure the patient enters his full name (Done)
+ *  - Add a cap when entering the patient's age in the registration (e.g. 0-100) & invalidate any negatives (Done)
  *  - Invalidate book appointment when inputting a time that is out of the doctor's availability (Pending)
  *  - Invalidate reschedule appointment when changing the date from the past (Pending)
  *  - Invalidate a booking if a patient tries to schedule an appointment at a time that has already been booked with the same doctor, even if it’s through a different account (Pending)
  */
+
 
 import java.util.Scanner;
 import java.util.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-
 
 public class HealthAppointmentSystem {
     private static final Scanner sc = new Scanner(System.in);
@@ -50,13 +51,29 @@ public class HealthAppointmentSystem {
         while (true) {
             System.out.print("Enter username: ");
             username = sc.nextLine();
+
             if (username.isEmpty()) {
                 System.out.println("Name cannot be empty. Please try again");
-            } else if (!username.matches("[A-Za-z]+")) {
+                continue;
+            } else if (!username.matches("[A-Za-z0-9]+")) {
                 System.out.println("Invalid username. Please try again");
-            } else {
-                break;
+                continue;
             }
+
+            // Prevent duplicate usernames
+            boolean exists = false;
+            for (Patients p : patients) {
+                if (p.getUsername().equalsIgnoreCase(username)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (exists) {
+                System.out.println("This username is already taken. Please try again.");
+                continue;
+            }
+
+            break;
         }
 
         String password;
@@ -74,10 +91,13 @@ public class HealthAppointmentSystem {
         while (true) {
             System.out.print("Enter full name: ");
             name = sc.nextLine();
+
             if (name.isEmpty()) {
                 System.out.println("Name cannot be empty. Please try again");
-            } else if (!name.matches("^[A-Za-z]+(([ .'-][A-Za-z.]+)*)")) {
-                System.out.println("Invalid name. Please try again");
+            }
+            // Require at least first and last name
+            else if (!name.matches("^[A-Za-z]+([ .'-][A-Za-z]+)+$")) {
+                System.out.println("Invalid full name. Please enter at least first and last name.");
             } else {
                 break;
             }
@@ -85,12 +105,19 @@ public class HealthAppointmentSystem {
 
         int age;
         while (true) {
-            try {
-                System.out.print("Enter age: ");
-                age = Integer.parseInt(sc.nextLine());
-                break;
-            } catch (NumberFormatException e) {
-                System.out.println("Invalid age. Please enter a number.");
+            System.out.print("Enter age: ");
+            if (sc.hasNextInt()) {
+                age = sc.nextInt();
+                sc.nextLine();
+
+                if (age >= 0 && age <= 130) {
+                    break;
+                } else {
+                    System.out.println("Invalid age. Please try again");
+                }
+            } else {
+                System.out.println("Invalid input. Please enter a whole number.");
+                sc.next();
             }
         }
 
@@ -98,11 +125,26 @@ public class HealthAppointmentSystem {
         while (true) {
             System.out.print("Enter contact number: ");
             contact = sc.nextLine();
-            if (contact.matches("\\d{11}")) {
-                break;
-            } else {
-                System.out.println("Invalid contact number. Please enter exactly 11 digits");
+
+            if (!contact.matches("\\d{11}")) {
+                System.out.println("Invalid contact number. Please enter exactly 11 digits.");
+                continue;
             }
+
+            // Prevent duplicate contact numbers
+            boolean contactExists = false;
+            for (Patients p : patients) {
+                if (p.getContact().equals(contact)) {
+                    contactExists = true;
+                    break;
+                }
+            }
+            if (contactExists) {
+                System.out.println("This contact number is already registered. Please use another.");
+                continue;
+            }
+
+            break;
         }
 
         patients.add(new Patients(username, password, name, age, contact));
@@ -117,7 +159,7 @@ public class HealthAppointmentSystem {
             username = sc.nextLine();
             if (username.isEmpty()) {
                 System.out.println("Name cannot be empty. Please try again");
-            } else if (!username.matches("[A-Za-z]+")) {
+            } else if (!username.matches("[A-Za-z0-9]+")) {
                 System.out.println("Invalid username. Please try again");
             } else {
                 break;
@@ -164,7 +206,6 @@ public class HealthAppointmentSystem {
         }
     }
 
-
     // Show Main Menu
     public static void showMainMenu() {
         while (isLoggedIn()) {
@@ -200,96 +241,77 @@ public class HealthAppointmentSystem {
         }
     }
 
-    private static void viewPatients() {
+    // View patients
+    public static void viewPatients() {
         System.out.println("\n=== Patient List ===");
         for (Patients p : patients) {
             System.out.println(p);
         }
     }
 
-    private static void viewDoctors() {
-        System.out.println("\n=== Doctors ===");
+    // View doctors
+    public static void viewDoctors() {
+        System.out.println("\n=== Doctor List ===");
+        for (Doctors d : doctors) {
+            System.out.println(d);
+        }
+    }
+
+    // Book appointment
+    public static void bookAppointment() {
+        if (doctors.isEmpty()) {
+            System.out.println("No doctors available.");
+            return;
+        }
+
+        System.out.println("\nChoose a doctor:");
         for (int i = 0; i < doctors.size(); i++) {
             System.out.println((i + 1) + ". " + doctors.get(i));
         }
-    }
 
-    // Fix the date thing like if today is 2025 you can't book in 2023
-    private static void bookAppointment() {
-        viewDoctors();
-        System.out.print("Choose doctor number: ");
-        int docIndex;
+        int docChoice;
         try {
-            docIndex = Integer.parseInt(sc.nextLine()) - 1;
+            docChoice = Integer.parseInt(sc.nextLine()) - 1;
         } catch (NumberFormatException e) {
-            System.out.println("Invalid input.");
+            System.out.println("Invalid choice.");
             return;
         }
 
-        if (docIndex < 0 || docIndex >= doctors.size()) {
-            System.out.println("Invalid doctor.");
+        if (docChoice < 0 || docChoice >= doctors.size()) {
+            System.out.println("Invalid choice.");
             return;
         }
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd h:mma");
-        LocalDateTime appointmentDateTime = null;
-
-        while (true) {
-            System.out.print("Enter date & time (e.g., 2025-08-20 10:00AM): ");
-            String dateTime = sc.nextLine();
-
-            try {
-                appointmentDateTime = LocalDateTime.parse(dateTime, formatter);
-
-                // Checks if date is before the current date
-                if (appointmentDateTime.isBefore(LocalDateTime.now())) {
-                    System.out.println("Invalid date. Please try again");
-                    continue;
-                }
-
-                // Checking
-                for (Appointment appt : appointments) {
-                    // Checks if the same doctor has the same appointment
-                    if (appt.getDoctor().equals(doctors.get(docIndex)) &&
-                            appt.getDateTime().equals(appointmentDateTime.format(formatter))) {
-                        System.out.println("This doctor already has an appointment at this time!");
-                        return;
-                    }
-
-                    // Checks if the same patient has the same appointment with any doctor
-                    if (appt.getPatient().equals(loggedInPatient) &&
-                            appt.getDateTime().equals(appointmentDateTime.format(formatter))) {
-                        System.out.println("You already have an appointment at this time with another doctor!");
-                        return;
-                    }
-                }
-
-                break;
-            } catch (DateTimeParseException e) {
-                System.out.println("Invalid format. Please use yyyy-MM-dd h:mma (e.g., 2025-08-25 2:00PM).");
-            }
+        System.out.print("Enter appointment date/time (yyyy-MM-dd HH:mm): ");
+        String dateTime = sc.nextLine();
+        try {
+            LocalDateTime.parse(dateTime, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+        } catch (DateTimeParseException e) {
+            System.out.println("Invalid date format.");
+            return;
         }
 
-        appointments.add(new Appointment(loggedInPatient, doctors.get(docIndex), appointmentDateTime.format(formatter)));
-        System.out.println("Appointment booked on " + appointmentDateTime.format(formatter) + "!");
+        appointments.add(new Appointment(loggedInPatient, doctors.get(docChoice), dateTime));
+        System.out.println("Appointment booked successfully!");
     }
 
-    private static void viewAppointments() {
+    // View appointments
+    public static void viewAppointments() {
         System.out.println("\n=== My Appointments ===");
-        boolean found = false;
         for (Appointment a : appointments) {
-            if (a.getPatient() == loggedInPatient) {
+            if (a.getPatient().equals(loggedInPatient)) {
                 System.out.println(a);
-                found = true;
             }
         }
-        if (!found) System.out.println("No appointments found.");
     }
 
-    private static void cancelAppointment() {
+    // Cancel appointment
+    public static void cancelAppointment() {
         List<Appointment> myAppointments = new ArrayList<>();
         for (Appointment a : appointments) {
-            if (a.getPatient() == loggedInPatient) myAppointments.add(a);
+            if (a.getPatient().equals(loggedInPatient)) {
+                myAppointments.add(a);
+            }
         }
 
         if (myAppointments.isEmpty()) {
@@ -297,32 +319,35 @@ public class HealthAppointmentSystem {
             return;
         }
 
+        System.out.println("\nChoose an appointment to cancel:");
         for (int i = 0; i < myAppointments.size(); i++) {
             System.out.println((i + 1) + ". " + myAppointments.get(i));
         }
 
-        System.out.print("Choose appointment to cancel: ");
-        int index;
+        int choice;
         try {
-            index = Integer.parseInt(sc.nextLine()) - 1;
+            choice = Integer.parseInt(sc.nextLine()) - 1;
         } catch (NumberFormatException e) {
-            System.out.println("Invalid input.");
-            return;
-        }
-
-        if (index < 0 || index >= myAppointments.size()) {
             System.out.println("Invalid choice.");
             return;
         }
 
-        appointments.remove(myAppointments.get(index));
+        if (choice < 0 || choice >= myAppointments.size()) {
+            System.out.println("Invalid choice.");
+            return;
+        }
+
+        appointments.remove(myAppointments.get(choice));
         System.out.println("Appointment canceled.");
     }
 
-    private static void rescheduleAppointment() {
+    // Reschedule appointment
+    public static void rescheduleAppointment() {
         List<Appointment> myAppointments = new ArrayList<>();
         for (Appointment a : appointments) {
-            if (a.getPatient() == loggedInPatient) myAppointments.add(a);
+            if (a.getPatient().equals(loggedInPatient)) {
+                myAppointments.add(a);
+            }
         }
 
         if (myAppointments.isEmpty()) {
@@ -330,28 +355,34 @@ public class HealthAppointmentSystem {
             return;
         }
 
+        System.out.println("\nChoose an appointment to reschedule:");
         for (int i = 0; i < myAppointments.size(); i++) {
             System.out.println((i + 1) + ". " + myAppointments.get(i));
         }
 
-        System.out.print("Choose appointment to reschedule: ");
-        int index;
+        int choice;
         try {
-            index = Integer.parseInt(sc.nextLine()) - 1;
+            choice = Integer.parseInt(sc.nextLine()) - 1;
         } catch (NumberFormatException e) {
-            System.out.println("Invalid input.");
-            return;
-        }
-
-        if (index < 0 || index >= myAppointments.size()) {
             System.out.println("Invalid choice.");
             return;
         }
 
-        System.out.print("Enter new date & time (e.g., 2025-08-25 2:00PM): ");
-        String newDateTime = sc.nextLine();
+        if (choice < 0 || choice >= myAppointments.size()) {
+            System.out.println("Invalid choice.");
+            return;
+        }
 
-        myAppointments.get(index).setDateTime(newDateTime);
+        System.out.print("Enter new date/time (yyyy-MM-dd HH:mm): ");
+        String newDateTime = sc.nextLine();
+        try {
+            LocalDateTime.parse(newDateTime, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+        } catch (DateTimeParseException e) {
+            System.out.println("Invalid date format.");
+            return;
+        }
+
+        myAppointments.get(choice).setDateTime(newDateTime);
         System.out.println("Appointment rescheduled successfully!");
     }
 
@@ -395,4 +426,3 @@ public class HealthAppointmentSystem {
         }
     }
 }
-

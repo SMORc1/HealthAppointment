@@ -1,7 +1,7 @@
-/**
+/*
  * Things to add:
  * input validation (Done)
- * fix the appointment system (On going)
+ * fix the appointment system (All Done)
  *  - Make it so that you can't book from the past (Done)
  *  - Make it so that you can't set an appointment on two or more doctors at the same time and date (Done)
  *  - Make it so that you can't set an appointment on the same doctor twice (Done)
@@ -10,15 +10,14 @@
  *  - Invalidate account registration when inputting a registered phone number to another account (Done)
  *  - When registering make sure the patient enters his full name (Done)
  *  - Add a cap when entering the patient's age in the registration (e.g. 0-100) & invalidate any negatives (Done)
- *  - Invalidate book appointment when inputting a time that is out of the doctor's availability (Pending)
- *  - Invalidate reschedule appointment when changing the date from the past (Pending)
- *  - Invalidate a booking if a patient tries to schedule an appointment at a time that has already been booked with the same doctor, even if it’s through a different account (Pending)
+ *  - Invalidate reschedule appointment when changing the date from the past (Done)
+ *  - Invalidate a booking if a patient tries to schedule an appointment at a time that has already been booked with the same doctor, even if it’s through a different account (Done)
  */
-
 
 import java.util.Scanner;
 import java.util.*;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
@@ -40,9 +39,10 @@ public class HealthAppointmentSystem {
 
     // Initialize doctors
     public static void initializeDoctors() {
-        doctors.add(new Doctors("Josep", "Cardiologist", "Mon-Wed 9AM-12PM"));
-        doctors.add(new Doctors("Janmark", "Dermatologist", "Tue-Thu 1PM-4PM"));
-        doctors.add(new Doctors("Basta Doctor", "Pediatrician", "Fri 10AM-2PM"));
+        doctors.add(new Doctors("Irving", "Cardiologist", "Mon-Wed", LocalTime.of(9, 0), LocalTime.of(12, 0)));
+        doctors.add(new Doctors("Joseph", "Dermatologist", "Tue-Thu", LocalTime.of(13, 0), LocalTime.of(16, 0)));
+        doctors.add(new Doctors("James", "Pediatrician", "Fri", LocalTime.of(10, 0), LocalTime.of(14, 0)));
+        doctors.add(new Doctors("Irish", "Ophthalmology", "Sat", LocalTime.of(9, 0), LocalTime.of(13, 0)));
     }
 
     // Register new patient
@@ -257,51 +257,162 @@ public class HealthAppointmentSystem {
         }
     }
 
+    private static boolean DocAvailability(Doctors doctor, LocalDate date) {
+        java.time.DayOfWeek dayOfWeek = date.getDayOfWeek();
+        String scheduleDays = doctor.getScheduleDays(); // like "Mon-Wed" or "Fri"
+
+        Map<String, java.time.DayOfWeek> dayMap = new HashMap<>();
+        dayMap.put("Mon", java.time.DayOfWeek.MONDAY);
+        dayMap.put("Tue", java.time.DayOfWeek.TUESDAY);
+        dayMap.put("Wed", java.time.DayOfWeek.WEDNESDAY);
+        dayMap.put("Thu", java.time.DayOfWeek.THURSDAY);
+        dayMap.put("Fri", java.time.DayOfWeek.FRIDAY);
+        dayMap.put("Sat", java.time.DayOfWeek.SATURDAY);
+        dayMap.put("Sun", java.time.DayOfWeek.SUNDAY);
+
+        if (scheduleDays.contains("-")) { // if the doctor has schedule like from Mon-Wed
+            String[] dayRange = scheduleDays.split("-");
+            java.time.DayOfWeek startDay = dayMap.get(dayRange[0]);
+            java.time.DayOfWeek endDay = dayMap.get(dayRange[1]);
+            return dayOfWeek.getValue() >= startDay.getValue() && dayOfWeek.getValue() <= endDay.getValue();
+        } else { //otherwise, it's a single day schedule
+            java.time.DayOfWeek scheduledDay = dayMap.get(scheduleDays);
+            return dayOfWeek == scheduledDay;
+        }
+    }
+
     // Book appointment
     public static void bookAppointment() {
         if (doctors.isEmpty()) {
             System.out.println("No doctors available.");
             return;
         }
+        Doctors selectedDoctor;
+        while (true) {
+            System.out.println("\nChoose a doctor:");
+            for (int i = 0; i < doctors.size(); i++) {
+                System.out.println((i + 1) + ". " + doctors.get(i));
+            }
 
-        System.out.println("\nChoose a doctor:");
-        for (int i = 0; i < doctors.size(); i++) {
-            System.out.println((i + 1) + ". " + doctors.get(i));
+            int docChoice;
+            try {
+                System.out.print("Enter choice: ");
+                docChoice = Integer.parseInt(sc.nextLine()) - 1;
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid input. Please enter a number.");
+                continue;
+            }
+
+            if (docChoice < 0 || docChoice >= doctors.size()) {
+                System.out.println("Invalid choice. Please try again.");
+                continue;
+            }
+            selectedDoctor = doctors.get(docChoice);
+            break;
         }
 
-        int docChoice;
-        try {
-            docChoice = Integer.parseInt(sc.nextLine()) - 1;
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid choice.");
+
+        //Setting up validation for appointment
+        LocalDate appointmentDate;
+        String dateStr;
+        while (true) {
+            System.out.print("Enter appointment date (yyyy-MM-dd): ");
+            dateStr = sc.nextLine();
+            try {
+                appointmentDate = LocalDate.parse(dateStr);
+            } catch (DateTimeParseException e) {
+                System.out.println("Invalid date format. Please use yyyy-MM-dd.");
+                continue;
+            }
+
+            if (appointmentDate.isBefore(LocalDate.now())) {
+                System.out.println("Invalid booking date. Selected date is in the past. Please try again.");
+                continue;
+            }
+
+            if (!DocAvailability(selectedDoctor, appointmentDate)) {
+                System.out.println("Invalid. Dr. " + selectedDoctor.getName() + " is not available on " + appointmentDate.getDayOfWeek() + "'s. Please choose a different date.");
+                continue;
+            }
+            break;
+        }
+
+        System.out.println("\nAvailable slots for " + dateStr + ":");
+        LocalTime slotTime = selectedDoctor.getStartTime();
+        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
+
+        List<LocalTime> allPossibleSlots = new ArrayList<>();
+        List<Boolean> isSlotBooked = new ArrayList<>();
+
+        while (slotTime.isBefore(selectedDoctor.getEndTime())) {
+            allPossibleSlots.add(slotTime);
+            String formattedDateTime = dateStr + " " + slotTime.format(timeFormatter);
+            boolean booked = appointments.stream().anyMatch(a -> a.getDoctor().equals(selectedDoctor) && a.getDateTime().equals(formattedDateTime));
+            isSlotBooked.add(booked);
+            slotTime = slotTime.plusMinutes(30);
+        }
+
+        // Display all slots with their status if it's AVAILABLE or BOOKED
+        boolean hasAvailableSlots = false;
+        for (int i = 0; i < allPossibleSlots.size(); i++) {
+            System.out.print((i + 1) + ". " + allPossibleSlots.get(i).format(timeFormatter));
+            if (isSlotBooked.get(i)) {
+                System.out.println(" - Booked");
+            } else {
+                System.out.println(" - Available");
+                hasAvailableSlots = true;
+            }
+        }
+
+        if (!hasAvailableSlots) {
+            System.out.println("No available slots for this day.");
             return;
         }
 
-        if (docChoice < 0 || docChoice >= doctors.size()) {
-            System.out.println("Invalid choice.");
-            return;
+        LocalTime chosenTime;
+        while (true) {
+            System.out.print("Choose an available slot: ");
+            int slotChoice;
+            try {
+                slotChoice = Integer.parseInt(sc.nextLine());
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid input. Please enter a number.");
+                continue;
+            }
+
+            if (slotChoice < 1 || slotChoice > allPossibleSlots.size()) {
+                System.out.println("Invalid slot number. Please try again.");
+                continue;
+            }
+
+            // This check if the CHOSEN slot is already booked by someone else
+            if (isSlotBooked.get(slotChoice - 1)) {
+                System.out.println("This slot is already booked. Please choose an available slot.");
+                continue;
+            }
+
+            chosenTime = allPossibleSlots.get(slotChoice - 1);
+            break;
         }
 
-        System.out.print("Enter appointment date/time (yyyy-MM-dd HH:mm): ");
-        String dateTime = sc.nextLine();
-        try {
-            LocalDateTime.parse(dateTime, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
-        } catch (DateTimeParseException e) {
-            System.out.println("Invalid date format.");
-            return;
-        }
-
-        appointments.add(new Appointment(loggedInPatient, doctors.get(docChoice), dateTime));
-        System.out.println("Appointment booked successfully!");
+        String finalDateTime = dateStr + " " + chosenTime.format(timeFormatter);
+        appointments.add(new Appointment(loggedInPatient, selectedDoctor, finalDateTime));
+        System.out.println("Appointment booked successfully for " + finalDateTime + "!");
     }
+
 
     // View appointments
     public static void viewAppointments() {
         System.out.println("\n=== My Appointments ===");
+        boolean found = false;
         for (Appointment a : appointments) {
             if (a.getPatient().equals(loggedInPatient)) {
                 System.out.println(a);
+                found = true;
             }
+        }
+        if (!found) {
+            System.out.println("No appointment booked for " + loggedInPatient + "!");
         }
     }
 
@@ -326,6 +437,7 @@ public class HealthAppointmentSystem {
 
         int choice;
         try {
+            System.out.println("Enter choice: ");
             choice = Integer.parseInt(sc.nextLine()) - 1;
         } catch (NumberFormatException e) {
             System.out.println("Invalid choice.");
@@ -362,6 +474,7 @@ public class HealthAppointmentSystem {
 
         int choice;
         try {
+            System.out.println("Enter choice: ");
             choice = Integer.parseInt(sc.nextLine()) - 1;
         } catch (NumberFormatException e) {
             System.out.println("Invalid choice.");
@@ -373,17 +486,94 @@ public class HealthAppointmentSystem {
             return;
         }
 
-        System.out.print("Enter new date/time (yyyy-MM-dd HH:mm): ");
-        String newDateTime = sc.nextLine();
-        try {
-            LocalDateTime.parse(newDateTime, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
-        } catch (DateTimeParseException e) {
-            System.out.println("Invalid date format.");
+        Appointment appointToReschedule = myAppointments.get(choice);
+        Doctors selectedDoctor = appointToReschedule.getDoctor();
+        System.out.println("Rescheduling appointment with Dr. " + selectedDoctor.getName());
+
+        LocalDate newAppointmentDate;
+        String newDateStr;
+        while (true) {// loop for Validation block
+            System.out.print("Enter new appointment date (yyyy-MM-dd): ");
+            newDateStr = sc.nextLine();
+            try {
+                newAppointmentDate = LocalDate.parse(newDateStr);
+            } catch (DateTimeParseException e) {
+                System.out.println("Invalid date format. Please use yyyy-MM-dd.");
+                continue;
+            }
+
+            if (newAppointmentDate.isBefore(LocalDate.now())) {
+                System.out.println("Invalid booking date. Selected date is in the past. Please try again.");
+                continue;
+            }
+
+            if (!DocAvailability(selectedDoctor, newAppointmentDate)) {
+                System.out.println("Invalid. Dr. " + selectedDoctor.getName() + " is not available on " + newAppointmentDate.getDayOfWeek() + "s. Please choose a different date.");
+                continue;
+            }
+            break;
+        }
+
+
+        System.out.println("\nAvailable slots for " + newDateStr + ":");
+        LocalTime slotTime = selectedDoctor.getStartTime();
+        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
+
+        List<LocalTime> allPossibleSlots = new ArrayList<>();
+        List<Boolean> isSlotBooked = new ArrayList<>();
+
+        while (slotTime.isBefore(selectedDoctor.getEndTime())) {
+            allPossibleSlots.add(slotTime);
+            String formattedDateTime = newDateStr + " " + slotTime.format(timeFormatter);
+            boolean booked = appointments.stream().anyMatch(a -> a.getDoctor().equals(selectedDoctor) && a.getDateTime().equals(formattedDateTime));
+            isSlotBooked.add(booked);
+            slotTime = slotTime.plusMinutes(30);
+        }
+
+        boolean hasAvailableSlots = false;
+        for (int i = 0; i < allPossibleSlots.size(); i++) {
+            System.out.print((i + 1) + ". " + allPossibleSlots.get(i).format(timeFormatter));
+            if (isSlotBooked.get(i)) {
+                System.out.println(" - Booked");
+            } else {
+                System.out.println(" - Available");
+                hasAvailableSlots = true;
+            }
+        }
+
+        if (!hasAvailableSlots) {
+            System.out.println("No available slots for this day.");
             return;
         }
 
-        myAppointments.get(choice).setDateTime(newDateTime);
-        System.out.println("Appointment rescheduled successfully!");
+        LocalTime newChosenTime;
+        while (true) {
+            System.out.print("Choose an available slot number: ");
+            int slotChoice;
+            try {
+                slotChoice = Integer.parseInt(sc.nextLine());
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid input. Please enter a number.");
+                continue;
+            }
+
+            if (slotChoice < 1 || slotChoice > allPossibleSlots.size()) {
+                System.out.println("Invalid slot number. Please try again.");
+                continue;
+            }
+
+            if (isSlotBooked.get(slotChoice - 1)) {
+                System.out.println("This slot is already booked. Please choose an available slot.");
+                continue;
+            }
+
+            newChosenTime = allPossibleSlots.get(slotChoice - 1);
+            break;
+        }
+
+        String finalDateTime = newDateStr + " " + newChosenTime.format(timeFormatter);
+        appointToReschedule.setDateTime(finalDateTime);
+        System.out.println("Appointment rescheduled successfully to " + finalDateTime + "!");
     }
 
     // Health Appointment Entry
@@ -425,4 +615,5 @@ public class HealthAppointmentSystem {
             }
         }
     }
+
 }
